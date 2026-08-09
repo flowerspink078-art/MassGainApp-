@@ -64,6 +64,11 @@
 
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade { animation: fadeIn 0.3s ease-out forwards; }
+        
+        /* Скрытие системных стрелочек у input type=number для чистоты дизайна */
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type="number"] { -moz-appearance: textfield; }
     </style>
 </head>
 <body class="pb-24">
@@ -554,12 +559,16 @@
                                     <span class="font-orbitron text-sm text-gray-400 pl-1">${i + 1}</span>
                                     <div class="flex items-center justify-center gap-1">
                                         <button onclick="updateSet('${originalEx.id}', ${i}, 'weight', -2.5)" class="stepper-btn w-7 h-9 rounded flex items-center justify-center font-bold text-xs">-</button>
-                                        <span class="w-10 text-center font-orbitron text-sm">${set.weight}</span>
+                                        <input type="number" inputmode="decimal" value="${set.weight}" 
+                                               onchange="setDirectValue('${originalEx.id}', ${i}, 'weight', this.value)"
+                                               class="w-12 h-9 text-center font-orbitron text-sm bg-transparent outline-none focus:bg-white/10 focus:border-b-2 focus:border-[#00FF9D] rounded-t transition-all text-white" />
                                         <button onclick="updateSet('${originalEx.id}', ${i}, 'weight', 2.5)" class="stepper-btn w-7 h-9 rounded flex items-center justify-center font-bold text-xs">+</button>
                                     </div>
                                     <div class="flex items-center justify-center gap-1">
                                         <button onclick="updateSet('${originalEx.id}', ${i}, 'reps', -1)" class="stepper-btn w-7 h-9 rounded flex items-center justify-center font-bold text-xs">-</button>
-                                        <span class="w-6 text-center font-orbitron text-sm">${set.reps}</span>
+                                        <input type="number" inputmode="numeric" value="${set.reps}" 
+                                               onchange="setDirectValue('${originalEx.id}', ${i}, 'reps', this.value)"
+                                               class="w-10 h-9 text-center font-orbitron text-sm bg-transparent outline-none focus:bg-white/10 focus:border-b-2 focus:border-[#00FF9D] rounded-t transition-all text-white" />
                                         <button onclick="updateSet('${originalEx.id}', ${i}, 'reps', 1)" class="stepper-btn w-7 h-9 rounded flex items-center justify-center font-bold text-xs">+</button>
                                     </div>
                                     <div class="flex justify-end pr-1">
@@ -703,8 +712,29 @@
             renderMission();
         }
 
+        // Функция для ручного ввода с клавиатуры
+        function setDirectValue(exId, setIndex, field, value) {
+            // Поддерживаем ввод с запятой для русской клавиатуры
+            let num = parseFloat(value.replace(',', '.')); 
+            if (isNaN(num) || num < 0) num = 0;
+            
+            // Округляем вес до сотых, чтобы не было длинных дробей, а повторы делаем целыми
+            if (field === 'weight') num = Math.round(num * 100) / 100;
+            else num = Math.round(num); 
+            
+            state.workoutData[exId][setIndex][field] = num;
+            saveState();
+            renderMission();
+        }
+
         function updateSet(exId, setIndex, field, delta) {
-            state.workoutData[exId][setIndex][field] = Math.max(0, state.workoutData[exId][setIndex][field] + delta);
+            let current = parseFloat(state.workoutData[exId][setIndex][field]) || 0;
+            let newVal = Math.max(0, current + delta);
+            
+            // Защита от кривых JS-дробей при сложении (например 53 + 2.5 = 55.500000001)
+            if (field === 'weight') newVal = Math.round(newVal * 100) / 100;
+            
+            state.workoutData[exId][setIndex][field] = newVal;
             saveState();
             renderMission();
             window.navigator.vibrate?.(10);
