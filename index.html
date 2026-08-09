@@ -1,1 +1,983 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mass Mode</title>
+    
+    <!-- PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Mass Mode">
+    <!-- Неоновая иконка MG от ui-avatars (надежный генератор) -->
+    <link rel="apple-touch-icon" href="https://ui-avatars.com/api/?name=MG&background=000000&color=00FF9D&size=180&font-size=0.4&bold=true">
+    
+    <!-- Скрипты -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&family=Orbitron:wght@700;900&display=swap');
 
+        :root {
+            --neon-green: #00FF9D;
+            --bg-black: #050505;
+            --card-gray: #121212;
+        }
+
+        body {
+            background-color: var(--bg-black);
+            color: white;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        .font-orbitron { font-family: 'Orbitron', sans-serif; }
+        .card { background-color: var(--card-gray); border-radius: 16px; }
+        .tab-active { color: var(--neon-green); filter: drop-shadow(0 0 8px rgba(0, 255, 157, 0.4)); }
+
+        .stepper-btn {
+            background: rgba(255, 255, 255, 0.05);
+            transition: all 0.1s ease;
+            touch-action: manipulation;
+        }
+
+        .stepper-btn:active {
+            background: var(--neon-green);
+            color: black;
+            transform: scale(0.9);
+        }
+
+        .btn-primary {
+            background: var(--neon-green);
+            color: black;
+            font-weight: 900;
+            text-transform: uppercase;
+            transition: all 0.1s;
+        }
+        .btn-primary:active { transform: scale(0.98); }
+
+        ::-webkit-scrollbar { display: none; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade { animation: fadeIn 0.3s ease-out forwards; }
+    </style>
+</head>
+<body class="pb-24">
+
+    <div id="app" class="max-w-md mx-auto min-h-screen flex flex-col p-4 relative">
+        <header class="flex justify-between items-center mb-6 pt-2">
+            <div>
+                <h1 class="text-2xl font-black uppercase tracking-tighter">Project 63</h1>
+                <p class="text-[10px] text-[#00FF9D] font-bold uppercase tracking-[0.2em]">Mass Mode</p>
+            </div>
+            <div id="global-timer" class="font-orbitron text-xl bg-white/5 px-3 py-1 rounded-lg border border-white/5">00:00</div>
+        </header>
+
+        <main id="main-content" class="flex-1 space-y-6 animate-fade"></main>
+
+        <!-- Timer Overlay -->
+        <div id="rest-overlay" class="hidden fixed inset-0 z-50 bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-6">
+            <h2 class="text-sm font-black uppercase text-gray-500 tracking-widest mb-2">Перезагрузка системы</h2>
+            <div id="rest-timer-display" class="font-orbitron text-8xl text-[#00FF9D] mb-8 drop-shadow-[0_0_30px_rgba(0,255,157,0.4)]">01:30</div>
+            
+            <div class="card bg-white/5 border border-white/10 p-5 w-full text-center mb-8">
+                <p class="text-[10px] uppercase font-bold text-gray-400 mb-1">Следующая цель</p>
+                <p id="next-set-target" class="text-xl font-black text-white"></p>
+            </div>
+
+            <div class="flex gap-4 w-full">
+                <button onclick="addRestTime(30)" class="flex-1 py-4 bg-white/10 rounded-xl text-xs font-black uppercase">+30 СЕК</button>
+                <button onclick="skipRest()" class="flex-1 py-4 btn-primary rounded-xl text-xs shadow-[0_0_20px_rgba(0,255,157,0.2)]">Завершить отдых</button>
+            </div>
+        </div>
+
+        <!-- Swap Exercise Modal -->
+        <div id="swap-overlay" class="hidden fixed inset-0 z-[60] bg-black/95 backdrop-blur-xl flex flex-col p-6 overflow-y-auto">
+            <div class="flex justify-between items-center mb-6 mt-2">
+                <div>
+                    <h2 class="text-xl font-black uppercase">Замена базы</h2>
+                    <p class="text-[10px] text-[#00FF9D] font-bold uppercase tracking-widest">Адаптация нагрузки</p>
+                </div>
+                <button onclick="closeSwapModal()" class="p-2 bg-white/10 rounded-lg text-white"><i data-lucide="x" class="w-6 h-6"></i></button>
+            </div>
+            <div id="swap-list" class="space-y-4 pb-10"></div>
+        </div>
+
+        <!-- Workout Map Modal (Обзор всей миссии) -->
+        <div id="workout-map-overlay" class="hidden fixed inset-0 z-[60] bg-black/95 backdrop-blur-xl flex flex-col p-6 overflow-y-auto">
+            <div class="flex justify-between items-center mb-6 mt-2">
+                <div>
+                    <h2 class="text-xl font-black uppercase">Карта миссии</h2>
+                    <p id="map-split-title" class="text-[10px] text-[#00FF9D] font-bold uppercase tracking-widest">Сплит A</p>
+                </div>
+                <button onclick="closeWorkoutMapModal()" class="p-2 bg-white/10 rounded-lg text-white"><i data-lucide="x" class="w-6 h-6"></i></button>
+            </div>
+            <div id="workout-map-list" class="space-y-3 pb-10"></div>
+        </div>
+
+        <nav class="fixed bottom-0 left-0 right-0 bg-[#050505]/95 backdrop-blur-xl border-t border-white/5 px-8 py-4 flex justify-between items-center z-40 max-w-md mx-auto">
+            <button onclick="nav('home')" id="nav-home" class="flex flex-col items-center gap-1.5 tab-active">
+                <i data-lucide="crosshair" class="w-6 h-6"></i>
+                <span class="text-[9px] uppercase font-black tracking-widest">Миссия</span>
+            </button>
+            <button onclick="nav('nutrition')" id="nav-nutrition" class="flex flex-col items-center gap-1.5 text-gray-600">
+                <i data-lucide="battery-charging" class="w-6 h-6"></i>
+                <span class="text-[9px] uppercase font-black tracking-widest">Топливо</span>
+            </button>
+            <button onclick="nav('progress')" id="nav-progress" class="flex flex-col items-center gap-1.5 text-gray-600">
+                <i data-lucide="zap" class="w-6 h-6"></i>
+                <span class="text-[9px] uppercase font-black tracking-widest">Уровень</span>
+            </button>
+        </nav>
+    </div>
+
+    <script>
+        const DB_VERSION = 'v14_ALTERNATIVES';
+
+        const DB_EXERCISES = {
+            'A': [
+                { 
+                    id: 'a1', name: 'Присед (Гакк/Смит)', target: '4 × 6-10', rest: 120, muscle: 'Квадрицепсы', 
+                    tips: ['Таз и спина прижаты', 'Колени по линии носков', 'RIR 1-2 (не до полного отказа)'],
+                    alternatives: [
+                        { name: 'Жим ногами (узкая постановка)', tips: ['Стопы близко друг к другу, чуть ниже центра', 'Акцент на переднюю часть бедра', 'Не отрывать таз внизу'] },
+                        { name: 'Гоблет-присед (с гантелью)', tips: ['Гантель вертикально у груди', 'Локти смотрят вниз', 'Садись между бедер, спина прямая'] }
+                    ]
+                },
+                { 
+                    id: 'a2', name: 'Жим от груди (тренажер)', target: '4 × 6-10', rest: 120, muscle: 'Грудные', 
+                    tips: ['Плечи опущены, лопатки прижаты', 'Последние 2 повтора должны замедляться', 'Не вбивай локти в конце'],
+                    alternatives: [
+                        { name: 'Жим гантелей лежа', tips: ['Лопатки сведены', 'Опускай гантели по бокам груди', 'Не сталкивай гантели в верхней точке'] },
+                        { name: 'Жим штанги лежа (или Смит)', tips: ['Хват чуть шире плеч', 'Штанга опускается на низ груди', 'Плечи не отрываются от скамьи'] }
+                    ]
+                },
+                { 
+                    id: 'a3', name: 'Вертикальная тяга', target: '4 × 8-12', rest: 120, muscle: 'Широчайшие', 
+                    tips: ['Грудь вверх, небольшой наклон назад', 'Тяни локти к ребрам', 'Вверху растяни спину, не бросай вес'],
+                    alternatives: [
+                        { name: 'Подтягивания (Гравитрон)', tips: ['Тяни локти вниз, а не себя вверх', 'Плечи опущены, не виси на суставах', 'Опускайся под контролем'] },
+                        { name: 'Тяга верхнего блока (V-рукоять)', tips: ['Узкий параллельный хват', 'Тяни к центру груди', 'Своди лопатки в нижней точке'] }
+                    ]
+                },
+                { 
+                    id: 'a4', name: 'Румынская тяга', target: '3 × 8-10', rest: 120, muscle: 'Бицепс бедра', 
+                    tips: ['Движение начинается с отведения таза', 'Спина нейтральна (прибавляй вес только при идеальной спине)', 'RIR 1-2'],
+                    alternatives: [
+                        { name: 'Сгибание ног сидя', tips: ['Валик над пятками', 'Таз плотно прижат', 'Задерживай вес внизу на секунду'] },
+                        { name: 'Сгибание ног лежа', tips: ['Не отрывай таз от скамьи', 'Сгибай без рывка поясницей', 'Медленно опускай (2-3 сек)'] }
+                    ]
+                },
+                { 
+                    id: 'a5', name: 'Махи с гантелями', target: '3 × 12-15', rest: 90, muscle: 'Средняя дельта', 
+                    tips: ['Локти слегка согнуты', 'Поднимай чуть перед собой', 'Суперсет: сразу после махов переходи к трицепсу'],
+                    alternatives: [
+                        { name: 'Тяга к подбородку (широкий хват)', tips: ['Хват шире плеч', 'Тяни локти вверх, а не кисти', 'Не поднимай выше груди (береги суставы)'] },
+                        { name: 'Махи в кроссовере (с нижних блоков)', tips: ['Тросы крест-накрест', 'Постоянное натяжение мышц', 'Корпус слегка наклонен вперед'] }
+                    ]
+                },
+                { 
+                    id: 'a6', name: 'Разгибание с канатом', target: '3 × 10-15', rest: 90, muscle: 'Трицепс', 
+                    tips: ['Локти жестко прижаты к корпусу', 'Внизу разводи концы каната', 'Двигаются только предплечья'],
+                    alternatives: [
+                        { name: 'Французский жим (гантель сидя)', tips: ['Гантель за голову обеими руками', 'Локти смотрят вверх и не разъезжаются', 'Растяни трицепс внизу'] },
+                        { name: 'Разгибание одной рукой (обратный хват)', tips: ['Используй одиночную рукоять в кроссовере', 'Хват снизу (ладонь вверх)', 'Локоть прижат'] }
+                    ]
+                },
+                { 
+                    id: 'a7', name: 'Dead bug', target: '3 × 10 на сторону', rest: 90, muscle: 'Кор', 
+                    tips: ['Поясница жестко вжата в пол', 'Опускай противоположные руку и ногу', 'Медленно, без рывков'],
+                    alternatives: [
+                        { name: 'Скручивания (кранчи)', tips: ['Поясница прижата к полу', 'Отрывай только лопатки', 'Втягивай живот на выдохе'] },
+                        { name: 'Планка', tips: ['Локти под плечами', 'Прямая линия от головы до пят', 'Таз не провисает и не торчит'] }
+                    ]
+                }
+            ],
+            'B': [
+                { 
+                    id: 'b1', name: 'Жим ногами', target: '4 × 8-12', rest: 120, muscle: 'Квадрицепсы / Ягодицы', 
+                    tips: ['Не отрывай таз в нижней точке!', 'Если 12 раз легко — добавляй вес', 'Колени не сводить'],
+                    alternatives: [
+                        { name: 'Приседания со штангой (Смит)', tips: ['Ноги слегка вынесены вперед', 'Опускайся до параллели бедра с полом', 'Вставай через пятку'] },
+                        { name: 'Выпады в Смите', tips: ['Спина прямая', 'Вся работа на переднюю ногу', 'Задняя нога для баланса'] }
+                    ]
+                },
+                { 
+                    id: 'b2', name: 'Ягодичный мост', target: '4 × 8-12', rest: 120, muscle: 'Ягодицы', 
+                    tips: ['Пауза 1 секунда в верхней точке', 'Подбородок к груди', 'RIR 1-2'],
+                    alternatives: [
+                        { name: 'Румынская тяга на одной ноге', tips: ['Придерживайся за опору', 'Отводи таз назад', 'Спина прямая, рабочая нога чуть согнута'] },
+                        { name: 'Отведение ноги назад (в кроссовере)', tips: ['Не прогибай поясницу', 'Отводи ногу строго за счет ягодицы', 'Небольшая амплитуда движения'] }
+                    ]
+                },
+                { 
+                    id: 'b3', name: 'Жим гантелей (наклон)', target: '3 × 8-12', rest: 120, muscle: 'Верх груди', 
+                    tips: ['Наклон скамьи 20-30 градусов', 'Кисть всегда над локтем', 'Не отрывай таз'],
+                    alternatives: [
+                        { name: 'Жим в Смите (наклон)', tips: ['Плавное опускание к ключицам', 'Локти немного приведены к корпусу', 'Без рывков'] },
+                        { name: 'Сведение в кроссовере (снизу вверх)', tips: ['Тяни рукояти от бедер до уровня глаз', 'Локти слегка согнуты', 'Грудь колесом'] }
+                    ]
+                },
+                { 
+                    id: 'b4', name: 'Горизонтальная тяга', target: '4 × 8-12', rest: 120, muscle: 'Спина', 
+                    tips: ['Корпус почти неподвижен', 'Своди лопатки в конце', 'Не пожимай плечами'],
+                    alternatives: [
+                        { name: 'Тяга гантели в наклоне (1 рука)', tips: ['Опора коленом и рукой на скамью', 'Тяни гантель к поясу, а не к груди', 'Спина параллельна полу'] },
+                        { name: 'Тяга Т-грифа (в тренажере)', tips: ['Упор грудью в подушку', 'Тяни локти назад', 'Растягивай широчайшие внизу'] }
+                    ]
+                },
+                { 
+                    id: 'b5', name: 'Сгибание ног', target: '3 × 10-15', rest: 90, muscle: 'Бицепс бедра', 
+                    tips: ['Возвращай вес 2-3 секунды', 'Без рывка поясницей'],
+                    alternatives: [
+                        { name: 'Румынская тяга с гантелями', tips: ['Гантели скользят по ногам', 'Таз максимально назад', 'Чувствуй натяжение задней поверхности'] },
+                        { name: 'Гиперэкстензия (на бицепс бедра)', tips: ['Опусти подушку ниже таза', 'Скругли верх спины', 'Поднимайся за счет ягодиц и бедер'] }
+                    ]
+                },
+                { 
+                    id: 'b6', name: 'Face pull (к лицу)', target: '3 × 12-15', rest: 90, muscle: 'Задняя дельта', 
+                    tips: ['Тяни концы каната к вискам', 'Локти в стороны', 'Суперсет с бицепсом'],
+                    alternatives: [
+                        { name: 'Обратная бабочка (Пек-Дек)', tips: ['Сиди лицом к тренажеру', 'Разводи руки назад, локти слегка согнуты', 'Не своди лопатки слишком сильно (работают дельты)'] },
+                        { name: 'Махи гантелями в наклоне', tips: ['Наклон корпуса параллельно полу', 'Поднимай гантели в стороны', 'Мизинцы чуть выше больших пальцев'] }
+                    ]
+                },
+                { 
+                    id: 'b7', name: 'Сгибание рук', target: '3 × 10-15', rest: 90, muscle: 'Бицепс', 
+                    tips: ['Локти прижаты к бокам', 'Медленно разгибай руки', 'Не забрасывай вес'],
+                    alternatives: [
+                        { name: 'Сгибание "Молот" (Гаммер)', tips: ['Хват гантелей нейтральный (как молоток)', 'Работает брахиалис', 'Локти зафиксированы'] },
+                        { name: 'Сгибание с EZ-штангой', tips: ['Изогнутый гриф бережет кисти', 'Не раскачивайся спиной', 'Полная амплитуда'] }
+                    ]
+                },
+                { 
+                    id: 'b8', name: 'Боковая планка', target: '3 × 25-40 сек', rest: 60, muscle: 'Кор', 
+                    tips: ['Прямая линия от головы до пят', 'Локоть строго под плечом'],
+                    alternatives: [
+                        { name: 'Русский твист (скручивания)', tips: ['Сидя, ноги на весу', 'Повороты корпуса вправо-влево', 'Взгляд за руками'] },
+                        { name: 'Скручивания с роликом (выкат)', tips: ['С колен, спина круглая', 'Не прогибай поясницу!', 'Напрягай пресс на возврате'] }
+                    ]
+                }
+            ],
+            'C': [
+                { 
+                    id: 'c1', name: 'Болгарский сплит-присед', target: '3 × 8-10', rest: 120, muscle: 'Ноги (одна)', 
+                    tips: ['Опускайся медленно (2 секунды)', 'Вставай усилием передней ноги', 'Можно держаться за опору'],
+                    alternatives: [
+                        { name: 'Выпады назад (гантели/Смит)', tips: ['Широкий шаг назад', 'Спина прямая', 'Вся опора на переднюю пятку'] },
+                        { name: 'Зашагивания на тумбу (с гантелями)', tips: ['Тумба на уровне колена', 'Не отталкивайся задней ногой', 'Контролируй спуск'] }
+                    ]
+                },
+                { 
+                    id: 'c2', name: 'Подтягивания (Гравитрон)', target: '4 × 6-10', rest: 120, muscle: 'Широчайшие', 
+                    tips: ['Тяни локти к бокам', 'Плавно опускайся до конца', 'RIR 1-2'],
+                    alternatives: [
+                        { name: 'Вертикальная тяга (широкий хват)', tips: ['Тяни за голову ИЛИ к ключицам', 'Лопатки сводятся вместе', 'Грудь подается навстречу весу'] },
+                        { name: 'Тяга штанги в наклоне (обратный хват)', tips: ['Хват снизу, на ширине плеч', 'Тяни к животу', 'Спина 45 градусов к полу'] }
+                    ]
+                },
+                { 
+                    id: 'c3', name: 'Жим вверх (тренажер)', target: '3 × 8-12', rest: 120, muscle: 'Плечи', 
+                    tips: ['Живот напряжен, ребра не выпячивай', 'Не блокируй локти вверху'],
+                    alternatives: [
+                        { name: 'Армейский жим (Смит/штанга)', tips: ['Жим стоя или сидя', 'Опускай до уровня подбородка', 'Не прогибайся в пояснице'] },
+                        { name: 'Жим гантелей сидя', tips: ['Угол скамьи 80 градусов', 'Гантели опускаются до ушей', 'Выжимай по дуге вверх'] }
+                    ]
+                },
+                { 
+                    id: 'c4', name: 'Разгибание ног', target: '3 × 10-15', rest: 90, muscle: 'Квадрицепс', 
+                    tips: ['Не отрывай таз', 'Пауза вверху на секунду', 'Плавный возврат'],
+                    alternatives: [
+                        { name: 'Сисси-присед (в тренажере/с опорой)', tips: ['Корпус и бедра на одной линии', 'Отклоняйся назад', 'Изоляция квадрицепса'] },
+                        { name: 'Жим одной ногой', tips: ['В тренажере для жима ногами', 'Стопа по центру', 'Следи, чтобы колено не заваливалось внутрь'] }
+                    ]
+                },
+                { 
+                    id: 'c5', name: 'Сведение рук (бабочка)', target: '3 × 10-15', rest: 90, muscle: 'Грудные', 
+                    tips: ['Плечи опущены', 'Локти слегка согнуты', 'Не вытягивай плечи вперед'],
+                    alternatives: [
+                        { name: 'Сведение в кроссовере (средние блоки)', tips: ['Рукояти на уровне груди', 'Своди руки перед собой', 'Растягивай мышцы на возврате'] },
+                        { name: 'Разведение гантелей лежа', tips: ['Лопатки сведены', 'Движение "обнимаешь бочку"', 'Глубокое растяжение внизу'] }
+                    ]
+                },
+                { 
+                    id: 'c6', name: 'Гиперэкстензия (с весом)', target: '3 × 10-15', rest: 90, muscle: 'Разгибатели', 
+                    tips: ['Блин прижат к груди', 'Сгибание строго в тазу', 'Вверху прямая линия'],
+                    alternatives: [
+                        { name: 'Наклоны со штангой (Гудморнинг)', tips: ['Штанга на плечах', 'Колени чуть согнуты', 'Отводи таз назад, спина прямая'] },
+                        { name: 'Обратная гиперэкстензия', tips: ['Лежа животом на скамье', 'Поднимай прямые ноги вверх', 'Держись руками за опору'] }
+                    ]
+                },
+                { 
+                    id: 'c7', name: 'Сгибание на блоке', target: '3 × 10-15', rest: 90, muscle: 'Бицепс', 
+                    tips: ['Локти зафиксированы', 'Работают только предплечья'],
+                    alternatives: [
+                        { name: 'Сгибания на скамье Скотта', tips: ['Подмышки плотно на подушке', 'Не выпрямляй руки до конца внизу (береги связки)', 'Полная изоляция'] },
+                        { name: 'Концентрированные сгибания (с гантелью)', tips: ['Локоть упирается во внутреннюю часть бедра', 'Вращай кисть (супинация) наверху'] }
+                    ]
+                },
+                { 
+                    id: 'c8', name: 'Разгибание на блоке', target: '3 × 10-15', rest: 90, muscle: 'Трицепс', 
+                    tips: ['Внизу полностью напряги трицепс', 'Не наваливайся телом'],
+                    alternatives: [
+                        { name: 'Отжимания от скамьи сзади', tips: ['Ноги можно поставить на возвышенность', 'Блин на бедра (для усложнения)', 'Локти идут назад, а не в стороны'] },
+                        { name: 'Французский жим лежа', tips: ['Штанга/гантели ко лбу', 'Плечо (от плечевого сустава до локтя) неподвижно'] }
+                    ]
+                },
+                { 
+                    id: 'c9', name: 'Фермерская прогулка', target: '3 × 30-40 м', rest: 90, muscle: 'Хват / Кор', 
+                    tips: ['Спина прямая, плечи опущены', 'Иди короткими уверенными шагами'],
+                    alternatives: [
+                        { name: 'Удержание блинов (щипковый хват)', tips: ['Держи тяжелые блины только пальцами', 'Руки опущены вдоль тела', 'На время (до отказа хвата)'] },
+                        { name: 'Вис на турнике', tips: ['Обычный хват сверху', 'Расслабь плечи', 'Виси на максимальное время'] }
+                    ]
+                }
+            ]
+        };
+
+        // --- STREAMING_CHUNK:State Management ---
+        let state = {
+            version: DB_VERSION,
+            currentSplit: 'A',
+            activeExerciseIndex: 0,
+            missionActive: false,
+            workoutData: {}, 
+            exerciseSwaps: {}, // Хранит выбранные альтернативы { 'a1': 1 } (0 - дефолт, 1 - альт1, 2 - альт2)
+            nutrition: { protein: 0, pimpNoodle: false, date: new Date().toDateString() },
+            stats: { level: 1, history: [] }
+        };
+
+        function loadState() {
+            const saved = localStorage.getItem('massModeState');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed.version === DB_VERSION) {
+                    state = parsed;
+                    if (!state.exerciseSwaps) state.exerciseSwaps = {};
+                    if (state.nutrition.date !== new Date().toDateString()) {
+                        state.nutrition = { protein: 0, pimpNoodle: false, date: new Date().toDateString() };
+                    }
+                }
+            }
+            initWorkoutData();
+        }
+
+        function saveState() { localStorage.setItem('massModeState', JSON.stringify(state)); }
+
+        function initWorkoutData() {
+            ['A', 'B', 'C'].forEach(split => {
+                DB_EXERCISES[split].forEach(ex => {
+                    if (!state.workoutData[ex.id]) {
+                        const numSets = parseInt(ex.target.split('×')[0].trim()) || 3;
+                        state.workoutData[ex.id] = Array.from({length: numSets}, () => ({ weight: 0, reps: 0, completed: false }));
+                    }
+                });
+            });
+        }
+
+        // --- STREAMING_CHUNK:Renderers ---
+        function renderHome() {
+            const split = state.currentSplit;
+            const exercisesCount = DB_EXERCISES[split].length;
+            const currentExs = DB_EXERCISES[split];
+            
+            const splitTitles = {
+                'A': 'Ноги · Грудь · Спина',
+                'B': 'Ноги · Ягодицы · Спина',
+                'C': 'Баланс · Плечи · Руки'
+            };
+            
+            const main = document.getElementById('main-content');
+            main.innerHTML = `
+                <div class="card p-6 border-l-4 border-l-[#00FF9D]">
+                    <div class="flex justify-between items-start mb-6">
+                        <div>
+                            <p class="text-[10px] font-black uppercase text-gray-500 tracking-widest mb-1">Следующая миссия</p>
+                            <h2 class="text-2xl font-black uppercase tracking-tighter">Сплит ${split}</h2>
+                            <p class="text-xs font-bold text-[#00FF9D] mt-1">${splitTitles[split]}</p>
+                        </div>
+                        <i data-lucide="crosshair" class="text-[#00FF9D] w-6 h-6"></i>
+                    </div>
+                    
+                    <div class="flex gap-4 mb-6">
+                        <div class="bg-white/5 px-3 py-2 rounded-lg">
+                            <p class="text-[10px] text-gray-500 uppercase font-bold">Упражнений</p>
+                            <p class="font-orbitron font-bold text-lg">${exercisesCount}</p>
+                        </div>
+                        <div class="bg-white/5 px-3 py-2 rounded-lg">
+                            <p class="text-[10px] text-gray-500 uppercase font-bold">Время</p>
+                            <p class="font-orbitron font-bold text-lg">~75 <span class="text-[10px]">МИН</span></p>
+                        </div>
+                    </div>
+
+                    <button onclick="startMission('${split}')" class="w-full py-4 btn-primary rounded-xl text-sm shadow-[0_0_20px_rgba(0,255,157,0.2)]">
+                        Начать миссию
+                    </button>
+                    
+                    <div class="mt-4 flex gap-2 overflow-x-auto pb-2">
+                        ${['A', 'B', 'C'].map(s => `
+                            <button onclick="state.currentSplit = '${s}'; saveState(); renderHome(); lucide.createIcons();" 
+                                    class="px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-colors flex-shrink-0 ${state.currentSplit === s ? 'bg-white/10 text-white border border-white/20' : 'text-gray-600'}">
+                                Сплит ${s}
+                            </button>
+                        `).join('')}
+                    </div>
+
+                    <!-- Полный план упражнений на главном экране -->
+                    <div class="mt-5 border-t border-white/10 pt-4">
+                        <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-3">Состав миссии (${currentExs.length} упражнений):</p>
+                        <div class="space-y-2">
+                            ${currentExs.map((ex, i) => {
+                                let name = ex.name;
+                                const swapIndex = state.exerciseSwaps[ex.id];
+                                if (swapIndex !== undefined && swapIndex !== 0) {
+                                    name = ex.alternatives[swapIndex - 1].name;
+                                }
+                                return `
+                                    <div class="flex items-center justify-between text-xs bg-white/5 px-3 py-2 rounded-lg">
+                                        <div class="flex items-center gap-2 overflow-hidden mr-2">
+                                            <span class="font-orbitron text-[10px] text-[#00FF9D] font-bold">${i + 1}.</span>
+                                            <span class="font-bold text-gray-200 truncate">${name}</span>
+                                        </div>
+                                        <span class="text-[10px] font-orbitron text-gray-400 flex-shrink-0">${ex.target}</span>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="card p-4 flex flex-col items-center text-center justify-center cursor-pointer" onclick="nav('nutrition')">
+                        <i data-lucide="battery-medium" class="text-[#00FF9D] mb-2 w-6 h-6"></i>
+                        <p class="text-[10px] font-bold uppercase text-gray-500 mb-1">Топливо (Белок)</p>
+                        <p class="font-orbitron font-bold text-xl">${state.nutrition.protein} <span class="text-[10px] text-gray-500">/ 100г</span></p>
+                    </div>
+                    <div class="card p-4 flex flex-col items-center text-center justify-center cursor-pointer" onclick="nav('progress')">
+                        <i data-lucide="zap" class="text-white mb-2 w-6 h-6"></i>
+                        <p class="text-[10px] font-bold uppercase text-gray-500 mb-1">Power Level</p>
+                        <p class="font-orbitron font-bold text-xl">LVL ${state.stats.level}</p>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        // --- STREAMING_CHUNK:Workout Logic ---
+        function startMission(split) {
+            state.missionActive = true;
+            state.activeExerciseIndex = 0;
+            DB_EXERCISES[split].forEach(ex => {
+                state.workoutData[ex.id].forEach(s => s.completed = false);
+            });
+            saveState();
+            renderMission();
+        }
+
+        function renderMission() {
+            const exList = DB_EXERCISES[state.currentSplit];
+            const originalEx = exList[state.activeExerciseIndex];
+            const sets = state.workoutData[originalEx.id];
+            
+            // Определяем, какое упражнение показывать (оригинал или замену)
+            let displayEx = { ...originalEx };
+            const swapIndex = state.exerciseSwaps[originalEx.id];
+            if (swapIndex !== undefined && swapIndex !== 0) {
+                const alt = originalEx.alternatives[swapIndex - 1];
+                displayEx.name = alt.name;
+                displayEx.tips = alt.tips;
+            }
+            
+            const main = document.getElementById('main-content');
+            main.innerHTML = `
+                <div class="flex justify-between items-center mb-4">
+                    <button onclick="state.missionActive = false; nav('home');" class="text-gray-500 p-2"><i data-lucide="x"></i></button>
+                    <div class="text-center">
+                        <p class="text-[10px] uppercase font-black tracking-widest text-[#00FF9D]">Сплит ${state.currentSplit}</p>
+                        <!-- Кнопка открытия полноэкранной карты тренировки -->
+                        <button onclick="openWorkoutMapModal()" class="flex items-center gap-1.5 mx-auto mt-0.5 font-orbitron text-xs bg-white/10 px-3 py-1 rounded-lg text-[#00FF9D] active:bg-white/20 transition-colors border border-white/10">
+                            <i data-lucide="list" class="w-3.5 h-3.5"></i> ${state.activeExerciseIndex + 1} / ${exList.length} (План)
+                        </button>
+                    </div>
+                    <div class="w-10"></div>
+                </div>
+
+                <div class="card p-5 border-l-4 border-l-[#00FF9D] mb-6">
+                    <div class="flex justify-between items-start mb-2">
+                        <p class="text-[10px] font-bold uppercase tracking-widest text-gray-500">${displayEx.muscle}</p>
+                        <button onclick="openSwapModal('${originalEx.id}')" class="flex items-center gap-1 text-[#00FF9D] bg-[#00FF9D]/10 px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border border-[#00FF9D]/20 active:bg-[#00FF9D]/30 transition-colors">
+                            <i data-lucide="refresh-cw" class="w-3 h-3"></i> Замена
+                        </button>
+                    </div>
+                    
+                    <h2 class="text-2xl font-black uppercase tracking-tighter mb-4 leading-tight">${displayEx.name}</h2>
+                    
+                    <div class="mb-6">
+                        <p class="text-[9px] uppercase font-black tracking-widest text-gray-600 mb-3">Техника и контроль:</p>
+                        <div class="space-y-2">
+                            ${displayEx.tips.map(t => `
+                                <div class="flex items-start gap-2 text-xs font-semibold text-gray-300 leading-tight">
+                                    <div class="w-1.5 h-1.5 bg-[#00FF9D] rounded-full mt-1 flex-shrink-0"></div>
+                                    <span>${t}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <!-- Кнопка YouTube автоматически ищет выбранную версию -->
+                        <a href="https://www.youtube.com/results?search_query=техника+выполнения+${encodeURIComponent(displayEx.name)}" 
+                           target="_blank" 
+                           class="inline-flex items-center gap-1.5 mt-5 px-3 py-2 bg-red-600/10 text-red-500 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-red-600/20 transition-colors border border-red-600/20 w-full justify-center">
+                            <i data-lucide="youtube" class="w-4 h-4"></i> Посмотреть технику на YouTube
+                        </a>
+                    </div>
+
+                    <div class="bg-[#050505] -mx-5 px-5 py-4 border-y border-white/5">
+                        <div class="flex justify-between items-center mb-4">
+                            <p class="text-[10px] uppercase font-black tracking-widest text-gray-500">Цель (Отдых ${displayEx.rest}с)</p>
+                            <p class="font-orbitron font-bold text-[#00FF9D]">${displayEx.target}</p>
+                        </div>
+                        
+                        <div class="grid grid-cols-4 text-[9px] uppercase font-black text-gray-500 px-1 mb-2">
+                            <span>Сет</span>
+                            <span class="text-center">Вес (кг)</span>
+                            <span class="text-center">Повт.</span>
+                            <span class="text-right">OK</span>
+                        </div>
+
+                        <div class="space-y-3">
+                            ${sets.map((set, i) => `
+                                <div class="grid grid-cols-4 items-center p-3 rounded-xl border transition-all ${set.completed ? 'bg-[#00FF9D]/5 border-[#00FF9D]/30 opacity-60' : 'bg-white/5 border-transparent'}">
+                                    <span class="font-orbitron text-sm text-gray-400 pl-1">${i + 1}</span>
+                                    <div class="flex items-center justify-center gap-1">
+                                        <button onclick="updateSet('${originalEx.id}', ${i}, 'weight', -2.5)" class="stepper-btn w-7 h-9 rounded flex items-center justify-center font-bold text-xs">-</button>
+                                        <span class="w-10 text-center font-orbitron text-sm">${set.weight}</span>
+                                        <button onclick="updateSet('${originalEx.id}', ${i}, 'weight', 2.5)" class="stepper-btn w-7 h-9 rounded flex items-center justify-center font-bold text-xs">+</button>
+                                    </div>
+                                    <div class="flex items-center justify-center gap-1">
+                                        <button onclick="updateSet('${originalEx.id}', ${i}, 'reps', -1)" class="stepper-btn w-7 h-9 rounded flex items-center justify-center font-bold text-xs">-</button>
+                                        <span class="w-6 text-center font-orbitron text-sm">${set.reps}</span>
+                                        <button onclick="updateSet('${originalEx.id}', ${i}, 'reps', 1)" class="stepper-btn w-7 h-9 rounded flex items-center justify-center font-bold text-xs">+</button>
+                                    </div>
+                                    <div class="flex justify-end pr-1">
+                                        <div onclick="toggleSet('${originalEx.id}', ${i})" class="w-8 h-8 rounded-lg border-2 flex items-center justify-center transition-all cursor-pointer ${set.completed ? 'border-[#00FF9D] bg-[#00FF9D] text-black' : 'border-white/20 bg-transparent text-transparent'}">
+                                            <i data-lucide="check" class="w-5 h-5"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-auto">
+                    <button onclick="changeEx(-1)" class="p-4 bg-white/5 rounded-xl ${state.activeExerciseIndex === 0 ? 'opacity-30' : ''}" ${state.activeExerciseIndex === 0 ? 'disabled' : ''}>
+                        <i data-lucide="chevron-left"></i>
+                    </button>
+                    ${state.activeExerciseIndex < exList.length - 1 ? 
+                        `<button onclick="changeEx(1)" class="flex-1 p-4 bg-white/10 rounded-xl font-black uppercase text-xs tracking-widest text-center">Следующее</button>` :
+                        `<button onclick="finishMission()" class="flex-1 p-4 btn-primary rounded-xl text-xs tracking-widest text-center shadow-[0_0_20px_rgba(0,255,157,0.2)]">Завершить миссию</button>`
+                    }
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        // --- STREAMING_CHUNK:Swap Modal Logic ---
+        function openSwapModal(exId) {
+            const exList = DB_EXERCISES[state.currentSplit];
+            const originalEx = exList.find(e => e.id === exId);
+            const currentSwap = state.exerciseSwaps[exId] || 0;
+            
+            const listDiv = document.getElementById('swap-list');
+            
+            let html = `
+                <div onclick="selectAlternative('${exId}', 0)" class="card p-4 border transition-all cursor-pointer ${currentSwap === 0 ? 'border-[#00FF9D] bg-[#00FF9D]/5' : 'border-white/10 bg-white/5'}">
+                    <div class="flex justify-between items-start mb-2">
+                        <h3 class="font-black uppercase text-sm">${originalEx.name}</h3>
+                        ${currentSwap === 0 ? '<span class="text-[9px] bg-[#00FF9D] text-black px-2 py-1 rounded font-black uppercase">Выбрано</span>' : ''}
+                    </div>
+                    <p class="text-[10px] text-gray-400 font-semibold mb-1">Основное упражнение по программе.</p>
+                </div>
+            `;
+
+            originalEx.alternatives.forEach((alt, index) => {
+                const altId = index + 1;
+                html += `
+                    <div onclick="selectAlternative('${exId}', ${altId})" class="card p-4 border transition-all cursor-pointer ${currentSwap === altId ? 'border-[#00FF9D] bg-[#00FF9D]/5' : 'border-white/10 bg-white/5'}">
+                        <div class="flex justify-between items-start mb-2">
+                            <h3 class="font-black uppercase text-sm">${alt.name}</h3>
+                            ${currentSwap === altId ? '<span class="text-[9px] bg-[#00FF9D] text-black px-2 py-1 rounded font-black uppercase">Выбрано</span>' : ''}
+                        </div>
+                        <ul class="space-y-1">
+                            ${alt.tips.map(t => `<li class="text-[10px] text-gray-400 font-semibold flex gap-1"><span class="text-[#00FF9D]">•</span> ${t}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            });
+
+            listDiv.innerHTML = html;
+            document.getElementById('swap-overlay').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeSwapModal() {
+            document.getElementById('swap-overlay').classList.add('hidden');
+        }
+
+        function selectAlternative(exId, altIndex) {
+            state.exerciseSwaps[exId] = altIndex;
+            saveState();
+            closeSwapModal();
+            renderMission();
+        }
+
+        // --- STREAMING_CHUNK:Workout Map Modal Logic ---
+        function openWorkoutMapModal() {
+            const split = state.currentSplit;
+            const exList = DB_EXERCISES[split];
+            document.getElementById('map-split-title').innerText = `Сплит ${split} · ${exList.length} упражнений`;
+
+            const listDiv = document.getElementById('workout-map-list');
+            listDiv.innerHTML = exList.map((ex, idx) => {
+                const isActive = idx === state.activeExerciseIndex;
+                const sets = state.workoutData[ex.id] || [];
+                const completedSets = sets.filter(s => s.completed).length;
+                const isAllDone = completedSets === sets.length && sets.length > 0;
+
+                let name = ex.name;
+                const swapIndex = state.exerciseSwaps[ex.id];
+                if (swapIndex !== undefined && swapIndex !== 0) {
+                    name = ex.alternatives[swapIndex - 1].name;
+                }
+
+                let statusBadge = '';
+                if (isAllDone) {
+                    statusBadge = `<span class="text-[9px] bg-[#00FF9D] text-black px-2 py-0.5 rounded font-black uppercase flex items-center gap-1"><i data-lucide="check" class="w-3 h-3"></i> Готово</span>`;
+                } else if (completedSets > 0) {
+                    statusBadge = `<span class="text-[9px] bg-white/20 text-white px-2 py-0.5 rounded font-black uppercase">${completedSets}/${sets.length}</span>`;
+                } else if (isActive) {
+                    statusBadge = `<span class="text-[9px] bg-[#00FF9D]/20 text-[#00FF9D] border border-[#00FF9D]/30 px-2 py-0.5 rounded font-black uppercase">Текущее</span>`;
+                } else {
+                    statusBadge = `<span class="text-[9px] text-gray-500 font-black uppercase">${sets.length} сета</span>`;
+                }
+
+                return `
+                    <div onclick="jumpToExercise(${idx})" class="card p-4 border transition-all cursor-pointer flex justify-between items-center ${isActive ? 'border-[#00FF9D] bg-[#00FF9D]/10' : isAllDone ? 'border-white/5 bg-white/5 opacity-60' : 'border-white/10 bg-white/5'}">
+                        <div class="flex items-center gap-3 overflow-hidden mr-2">
+                            <div class="w-7 h-7 rounded-lg font-orbitron text-xs font-bold flex items-center justify-center flex-shrink-0 ${isActive ? 'bg-[#00FF9D] text-black' : 'bg-white/10 text-gray-400'}">
+                                ${idx + 1}
+                            </div>
+                            <div class="overflow-hidden">
+                                <h4 class="text-xs font-black uppercase truncate ${isActive ? 'text-[#00FF9D]' : 'text-white'}">${name}</h4>
+                                <p class="text-[10px] text-gray-500 font-semibold truncate">${ex.muscle} · ${ex.target}</p>
+                            </div>
+                        </div>
+                        <div class="flex-shrink-0">${statusBadge}</div>
+                    </div>
+                `;
+            }).join('');
+
+            document.getElementById('workout-map-overlay').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeWorkoutMapModal() {
+            document.getElementById('workout-map-overlay').classList.add('hidden');
+        }
+
+        function jumpToExercise(idx) {
+            state.activeExerciseIndex = idx;
+            saveState();
+            closeWorkoutMapModal();
+            renderMission();
+        }
+
+        // --- STREAMING_CHUNK:Timer and Sets Logic ---
+        function changeEx(delta) {
+            state.activeExerciseIndex += delta;
+            saveState();
+            renderMission();
+        }
+
+        function updateSet(exId, setIndex, field, delta) {
+            state.workoutData[exId][setIndex][field] = Math.max(0, state.workoutData[exId][setIndex][field] + delta);
+            saveState();
+            renderMission();
+            window.navigator.vibrate?.(10);
+        }
+
+        function toggleSet(exId, setIndex) {
+            const s = state.workoutData[exId][setIndex];
+            s.completed = !s.completed;
+            saveState();
+            renderMission();
+            
+            if (s.completed) {
+                window.navigator.vibrate?.([50, 50, 50]);
+                const ex = DB_EXERCISES[state.currentSplit].find(e => e.id === exId);
+                const restSeconds = ex.rest || 120;
+                startRestTimer(restSeconds, state.workoutData[exId][setIndex + 1]);
+            }
+        }
+
+        let restInterval;
+        let restSeconds = 0;
+        function startRestTimer(seconds, nextSetInfo) {
+            restSeconds = seconds;
+            const overlay = document.getElementById('rest-overlay');
+            const target = document.getElementById('next-set-target');
+            
+            target.innerText = nextSetInfo ? `${nextSetInfo.weight} кг × ${nextSetInfo.reps} повт.` : 'Последний подход выполнен!';
+            
+            overlay.classList.remove('hidden');
+            
+            clearInterval(restInterval);
+            updateTimerDisplay();
+            
+            restInterval = setInterval(() => {
+                restSeconds--;
+                updateTimerDisplay();
+                if (restSeconds <= 0) skipRest();
+            }, 1000);
+        }
+
+        function updateTimerDisplay() {
+            let m = Math.floor(restSeconds / 60);
+            let s = restSeconds % 60;
+            document.getElementById('rest-timer-display').innerText = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        function addRestTime(secs) { restSeconds += secs; updateTimerDisplay(); }
+
+        function skipRest() {
+            clearInterval(restInterval);
+            document.getElementById('rest-overlay').classList.add('hidden');
+            window.navigator.vibrate?.([100, 100, 300]);
+        }
+
+        function finishMission() {
+            const today = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+            let summary = { date: today, split: state.currentSplit, exNames: [] };
+            
+            DB_EXERCISES[state.currentSplit].forEach(originalEx => {
+                const sets = state.workoutData[originalEx.id];
+                const completedSets = sets.filter(s => s.completed);
+                if (completedSets.length > 0) {
+                    const maxWeight = Math.max(...completedSets.map(s => s.weight));
+                    
+                    // Записываем в историю ТО название, которое было реально выполнено
+                    let finalName = originalEx.name;
+                    const swapIndex = state.exerciseSwaps[originalEx.id];
+                    if (swapIndex !== undefined && swapIndex !== 0) {
+                        finalName = originalEx.alternatives[swapIndex - 1].name;
+                    }
+
+                    summary.exNames.push(`${finalName}: ${maxWeight}кг`);
+                }
+            });
+
+            if (summary.exNames.length > 0) {
+                state.stats.history.unshift(summary);
+                if (state.stats.history.length > 15) state.stats.history.pop();
+            }
+
+            state.missionActive = false;
+            state.stats.level++;
+            saveState();
+            window.navigator.vibrate?.([100, 50, 100, 50, 300]);
+            nav('progress');
+        }
+
+        // --- STREAMING_CHUNK:Nutrition & Progress ---
+        function renderNutrition() {
+            const p = state.nutrition.protein;
+            const pct = Math.min(100, Math.round((p / 100) * 100));
+            
+            const main = document.getElementById('main-content');
+            main.innerHTML = `
+                <div class="mb-2">
+                    <h2 class="text-2xl font-black uppercase tracking-tighter">Топливо</h2>
+                    <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Ресурс на сегодня</p>
+                </div>
+
+                <div class="card p-6 border border-[#00FF9D]/20 mb-6">
+                    <div class="relative w-40 h-40 mx-auto">
+                        <canvas id="proteinChart"></canvas>
+                        <div class="absolute inset-0 flex flex-col justify-center items-center pointer-events-none -mt-4">
+                            <span class="font-orbitron text-5xl font-black leading-none">${p}</span>
+                            <span class="text-[8px] uppercase font-black text-gray-400 mt-1">ИЗ 100Г БЕЛКА</span>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-3">План питания</h3>
+                
+                <div class="space-y-3 mb-6">
+                    <div class="card p-4 border border-white/5">
+                        <div class="flex justify-between items-center mb-2">
+                            <h4 class="text-xs font-black uppercase text-[#00FF9D]">Завтрак</h4>
+                            <span class="text-[10px] font-bold text-gray-400">+25г белка</span>
+                        </div>
+                        <p class="text-[11px] text-gray-400 mb-3">Овсянка на молоке + банан + паста ИЛИ Творог 5% (целая пачка 180г) ИЛИ 3 яйца + сыр</p>
+                        <button onclick="addProtein(25)" class="w-full py-3 bg-white/5 rounded-lg text-[10px] font-black uppercase">Съел</button>
+                    </div>
+
+                    <div class="card p-4 border border-white/5">
+                        <div class="flex justify-between items-center mb-2">
+                            <h4 class="text-xs font-black uppercase text-[#00FF9D]">Обед</h4>
+                            <span class="text-[10px] font-bold text-gray-400">+35г белка</span>
+                        </div>
+                        <p class="text-[11px] text-gray-400 mb-3">150г мяса/птицы/рыбы + 300г макарон/риса/гречки + овощи</p>
+                        <button onclick="addProtein(35)" class="w-full py-3 bg-white/5 rounded-lg text-[10px] font-black uppercase">Съел</button>
+                    </div>
+
+                    <div class="card p-4 border border-white/5">
+                        <div class="flex justify-between items-center mb-2">
+                            <h4 class="text-xs font-black uppercase text-[#00FF9D]">Ужин</h4>
+                            <span class="text-[10px] font-bold text-gray-400">+30г белка</span>
+                        </div>
+                        <p class="text-[11px] text-gray-400 mb-3">Макароны с мясным соусом ИЛИ пюре с котлетой ИЛИ рис с курицей</p>
+                        <button onclick="addProtein(30)" class="w-full py-3 bg-white/5 rounded-lg text-[10px] font-black uppercase">Съел</button>
+                    </div>
+                </div>
+
+                <h3 class="text-[11px] font-black uppercase tracking-widest text-gray-500 mb-3">Спортпит & Перекусы</h3>
+                
+                <div class="grid grid-cols-2 gap-3 pb-8">
+                    <button onclick="addProtein(28)" class="card p-4 text-left active:scale-95 transition-transform border border-white/5">
+                        <p class="text-[10px] font-black uppercase mb-1">Протеин</p>
+                        <p class="font-orbitron font-bold text-[#00FF9D]">+28г</p>
+                    </button>
+                    <button onclick="addProtein(20)" class="card p-4 text-left active:scale-95 transition-transform border border-white/5">
+                        <p class="text-[10px] font-black uppercase mb-1">Творог 5% <span class="text-[8px] text-gray-500">(120г)</span></p>
+                        <p class="font-orbitron font-bold text-[#00FF9D]">+20г</p>
+                    </button>
+                    <button onclick="addProtein(16.5)" class="card p-4 text-left active:scale-95 transition-transform border border-white/5">
+                        <p class="text-[10px] font-black uppercase mb-1">NL Вода</p>
+                        <p class="font-orbitron font-bold text-[#00FF9D]">+16.5г</p>
+                    </button>
+                    <button onclick="addProtein(22)" class="card p-4 text-left active:scale-95 transition-transform border border-white/5">
+                        <p class="text-[10px] font-black uppercase mb-1">NL Молоко</p>
+                        <p class="font-orbitron font-bold text-[#00FF9D]">+22г</p>
+                    </button>
+                    
+                    <div class="col-span-2 card p-4 border border-white/5 relative overflow-hidden mt-2">
+                        <div class="relative z-10">
+                            <h3 class="text-sm font-black uppercase mb-1">Прокачай Дошик</h3>
+                            <p class="text-[10px] text-gray-400 mb-3">Лапша + 2 яйца или 150г курицы</p>
+                            <button onclick="pimpNoodle()" class="px-4 py-2 rounded-lg text-[10px] font-black uppercase ${state.nutrition.pimpNoodle ? 'bg-[#00FF9D] text-black' : 'bg-white/10 text-white'}">
+                                ${state.nutrition.pimpNoodle ? 'Заряжено (+12г)' : 'Добавить'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+            setTimeout(() => updateProteinChart(), 50);
+        }
+
+        function addProtein(amount) {
+            state.nutrition.protein += amount;
+            saveState();
+            renderNutrition();
+            window.navigator.vibrate?.(50);
+        }
+
+        function pimpNoodle() {
+            if (!state.nutrition.pimpNoodle) {
+                state.nutrition.protein += 12;
+                state.nutrition.pimpNoodle = true;
+                saveState();
+                renderNutrition();
+                window.navigator.vibrate?.([50, 50]);
+            }
+        }
+
+        function updateProteinChart() {
+            const ctx = document.getElementById('proteinChart').getContext('2d');
+            if (window.pChart) window.pChart.destroy();
+            window.pChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    datasets: [{
+                        data: [state.nutrition.protein, Math.max(0, 100 - state.nutrition.protein)],
+                        backgroundColor: ['#00FF9D', 'rgba(255,255,255,0.05)'],
+                        borderWidth: 0,
+                        borderRadius: 10,
+                        circumference: 240,
+                        rotation: 240
+                    }]
+                },
+                options: { cutout: '85%', plugins: { legend: { display: false }, tooltip: { enabled: false } }, animation: { duration: 1000 } }
+            });
+        }
+
+        function renderProgress() {
+            const main = document.getElementById('main-content');
+            main.innerHTML = `
+                <div class="mb-6">
+                    <h2 class="text-2xl font-black uppercase tracking-tighter">Рост</h2>
+                    <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Аналитика миссий</p>
+                </div>
+
+                <div class="card p-6 border border-white/5 mb-6 text-center relative overflow-hidden">
+                    <i data-lucide="zap" class="absolute -right-4 -top-4 w-24 h-24 text-white/5"></i>
+                    <p class="text-[10px] font-black uppercase text-gray-500 tracking-widest mb-1">Power Level</p>
+                    <p class="font-orbitron font-black text-6xl text-white mb-2">${state.stats.level}</p>
+                </div>
+                
+                <h3 class="text-[11px] font-black uppercase tracking-widest text-gray-500 mt-8 mb-4">История миссий</h3>
+                <div class="space-y-3">
+                    ${state.stats.history.length === 0 ? 
+                        `<p class="text-xs text-gray-500 font-semibold text-center py-4">Миссии пока не завершены</p>` :
+                        state.stats.history.map(h => `
+                            <div class="card p-4 border border-white/5">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="text-[10px] font-bold text-[#00FF9D] uppercase">${h.date}</span>
+                                    <span class="text-[10px] font-black text-white uppercase bg-white/10 px-2 py-1 rounded">Сплит ${h.split}</span>
+                                </div>
+                                <div class="text-[10px] text-gray-400 space-y-1 font-semibold uppercase tracking-wide">
+                                    ${h.exNames.map(name => `<p>• ${name}</p>`).join('')}
+                                </div>
+                            </div>
+                        `).join('')
+                    }
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        // --- STREAMING_CHUNK:App Initialization ---
+        function nav(screen) {
+            if (state.missionActive && screen !== 'home') return;
+            
+            ['home', 'nutrition', 'progress'].forEach(s => {
+                document.getElementById('nav-' + s).classList.replace('tab-active', 'text-gray-600');
+            });
+            document.getElementById('nav-' + screen).classList.replace('text-gray-600', 'tab-active');
+            
+            if (state.missionActive && screen === 'home') renderMission();
+            else if (screen === 'home') renderHome();
+            else if (screen === 'nutrition') renderNutrition();
+            else if (screen === 'progress') renderProgress();
+            
+            window.scrollTo(0, 0);
+        }
+
+        let globalSec = 0;
+        setInterval(() => {
+            globalSec++;
+            let m = Math.floor(globalSec / 60);
+            let s = globalSec % 60;
+            document.getElementById('global-timer').innerText = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }, 1000);
+
+        loadState();
+        nav('home');
+    </script>
+</body>
+</html>
